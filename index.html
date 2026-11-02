@@ -1,0 +1,536 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Маджонг</title>
+<style>
+  :root{
+    --ui-bg:#ffffff; --ui-text:#2C2C2B; --ui-muted:#7D7A75; --ui-border:#E6E5E3; --ui-soft:#F9F8F7; --accent:#2783DE;
+    /* Переменные плитки — их задаёт активный скин */
+    --face:#fbf8ef; --face2:#efe7d3; --edge:rgba(120,100,60,.35);
+    --side:#e6d6ad; --side2:#c4a970; --board:#1f5a4a; --board2:#123a30;
+    --select:#ffcf4a; --hint:#38b6ff; --radius:.14;
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0;height:100%}
+  body{font:16px/1.5 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;color:var(--ui-text);background:var(--ui-bg);display:flex;flex-direction:column;min-height:520px}
+  header{display:flex;flex-wrap:wrap;align-items:center;gap:8px 16px;padding:12px 16px;border-bottom:1px solid var(--ui-border)}
+  h1{font-size:20px;margin:0 8px 0 0;font-weight:700;letter-spacing:-.01em}
+  .stats{display:flex;gap:8px;flex-wrap:wrap}
+  .stat{font-size:14px;color:var(--ui-muted);background:var(--ui-soft);border:1px solid var(--ui-border);border-radius:8px;padding:4px 10px;white-space:nowrap}
+  .stat b{color:var(--ui-text);font-variant-numeric:tabular-nums}
+  .controls{display:flex;flex-wrap:wrap;gap:8px;margin-left:auto;align-items:center}
+  button,select{font:inherit;font-size:14px;color:var(--ui-text);background:#fff;border:1px solid var(--ui-border);border-radius:8px;min-height:36px;padding:6px 12px;cursor:pointer}
+  button:hover,select:hover{background:var(--ui-soft)}
+  button:focus-visible,select:focus-visible,label.chk:focus-within{outline:2px solid var(--accent);outline-offset:2px}
+  button:disabled{opacity:.45;cursor:default}
+  button.primary{background:var(--accent);border-color:var(--accent);color:#fff}
+  button.primary:hover{background:#1f6fc0}
+  label.chk{display:flex;gap:6px;align-items:center;font-size:14px;color:var(--ui-muted);cursor:pointer;border-radius:8px}
+  main{flex:1;position:relative;overflow:hidden;background:radial-gradient(120% 120% at 50% 30%,var(--board),var(--board2));transition:background .3s}
+  #board{position:absolute;left:0;top:0}
+  .tile{position:absolute;border-radius:calc(var(--w)*var(--radius));background:linear-gradient(135deg,var(--side),var(--side2));box-shadow:1px 2px 4px rgba(0,0,0,.28);cursor:pointer;transition:transform .12s ease}
+  .tile .face{position:absolute;left:0;top:0;width:var(--fw);height:var(--fh);border-radius:calc(var(--w)*var(--radius));background:linear-gradient(160deg,var(--face),var(--face2));box-shadow:inset 0 0 0 1px var(--edge);overflow:hidden}
+  .tile .face svg,.tile .face img{position:absolute;inset:6%;width:88%;height:88%;object-fit:contain;pointer-events:none}
+  .tile .face::after{content:"";position:absolute;inset:0;border-radius:inherit;pointer-events:none;opacity:0;transition:opacity .12s}
+  .tile.free:hover{transform:translate(0,-2px)}
+  .tile.sel .face{box-shadow:inset 0 0 0 calc(var(--w)*.07) var(--select)}
+  .tile.sel .face::after{opacity:.35;background:var(--select)}
+  .tile.sel{transform:translate(0,-3px)}
+  .tile.hint .face{box-shadow:inset 0 0 0 calc(var(--w)*.06) var(--hint)}
+  .tile.hint .face::after{background:var(--hint);animation:pulse 1s ease-in-out infinite}
+  .dim .tile.blocked .face{filter:brightness(.84) saturate(.8)}
+  .tile.shake{animation:shake .3s}
+  @keyframes pulse{0%,100%{opacity:.15}50%{opacity:.6}}
+  @keyframes shake{25%{transform:translateX(-3px)}75%{transform:translateX(3px)}}
+  @media (prefers-reduced-motion:reduce){.tile,.tile .face::after{transition:none}.tile.hint .face::after{animation:none;opacity:.45}.tile.shake{animation:none}}
+  .overlay{position:absolute;inset:0;display:none;align-items:center;justify-content:center;background:rgba(0,0,0,.35);z-index:100000}
+  .overlay.show{display:flex}
+  .card{background:#fff;border-radius:12px;padding:24px 28px;max-width:440px;width:calc(100% - 48px);box-shadow:0 1px 2px rgba(0,0,0,.05),0 8px 24px rgba(0,0,0,.15)}
+  .card h2{margin:0 0 8px;font-size:22px}
+  .card p{margin:0 0 16px;color:var(--ui-muted)}
+  .card .row{display:flex;gap:8px;flex-wrap:wrap}
+  .card code{font:13px Menlo,Consolas,monospace;background:var(--ui-soft);border:1px solid var(--ui-border);border-radius:4px;padding:1px 4px}
+  .names{font:13px/1.7 Menlo,Consolas,monospace;color:var(--ui-text);background:var(--ui-soft);border:1px solid var(--ui-border);border-radius:8px;padding:8px 12px;margin:0 0 16px;max-height:180px;overflow:auto}
+  @media (prefers-color-scheme:dark){
+    :root{--ui-bg:#191919;--ui-text:#fff;--ui-muted:rgba(255,255,255,.65);--ui-border:rgba(255,255,255,.2);--ui-soft:#202020;--accent:#5E9FE8}
+    button,select{background:#202020;color:#fff} button:hover,select:hover{background:#383836}
+    .card{background:#202020}
+  }
+  @media (max-width:640px){header{padding:8px 12px}.controls{margin-left:0}h1{font-size:18px}}
+</style>
+</head>
+<body>
+<header>
+  <h1>🀄 Маджонг</h1>
+  <div class="stats">
+    <span class="stat">Плиток: <b id="left">144</b></span>
+    <span class="stat">Ходов: <b id="moves">0</b></span>
+    <span class="stat">⏱ <b id="time">0:00</b></span>
+  </div>
+  <div class="controls">
+    <button class="primary" id="btnNew">Новая игра</button>
+    <button id="btnUndo" title="Ctrl+Z">↩️ Отменить</button>
+    <button id="btnHint" title="H">💡 Подсказка</button>
+    <button id="btnShuffle">🔀 Перемешать</button>
+    <select id="skin" aria-label="Скин плиток"></select>
+    <button id="btnImg" title="Загрузить собственные картинки плиток">🖼 Свой скин</button>
+    <label class="chk"><input type="checkbox" id="dim" checked> Затемнять занятые</label>
+  </div>
+</header>
+<main id="main">
+  <div id="board"></div>
+  <div class="overlay" id="overlay"><div class="card" id="card"></div></div>
+</main>
+<input type="file" id="files" accept="image/*" multiple hidden>
+
+<script>
+/* =====================================================================
+   СКИНЫ
+   ---------------------------------------------------------------------
+   Чтобы добавить свой скин, допишите объект в SKINS (или вызовите
+   registerSkin(id, skin) из консоли / другого скрипта):
+
+     myskin: {
+       name: 'Мой скин',
+       colors: {                       // всё, кроме name, необязательно
+         face:'#fff', face2:'#eee',    // лицевая сторона (градиент)
+         edge:'rgba(0,0,0,.2)',        // тонкая рамка лица
+         side:'#ccc', side2:'#999',    // боковая грань (толщина плитки)
+         board:'#245', board2:'#123',  // фон стола (радиальный градиент)
+         select:'#fc0', hint:'#3bf',   // подсветка выбора и подсказки
+       },
+       render(t) { return '<svg …>…</svg>' }  // или '<img src="…">'
+     }
+
+   t — описание плитки:
+     t.suit : 'dots' | 'bamboo' | 'chars' | 'wind' | 'dragon' | 'flower' | 'season'
+     t.rank : 1–9 для мастей, 'e','s','w','n' для ветров,
+              'r','g','w' для драконов, 1–4 для цветов и сезонов
+     t.id   : 'dots-5', 'wind-n', 'dragon-r', 'flower-2' …
+
+   Скин из картинок: imageSkin('Название', 'папка/', 'png') — ищет файлы
+   с именами t.id, например «папка/dots-5.png». Кнопка «Свой скин»
+   делает то же самое с файлами с вашего компьютера.
+   ===================================================================== */
+
+const SVG = inner => `<svg viewBox="0 0 60 80" xmlns="http://www.w3.org/2000/svg">${inner}</svg>`;
+const CJK = `font-family="'Noto Serif CJK SC','Songti SC','STSong','SimSun','Noto Sans CJK SC','PingFang SC','Microsoft YaHei',serif"`;
+const SANS = `font-family="-apple-system,'Segoe UI',Roboto,Arial,sans-serif"`;
+const EMOJI = `font-family="'Apple Color Emoji','Segoe UI Emoji','Noto Color Emoji',sans-serif"`;
+const txt = (x, y, s, size, fill, extra = '') =>
+  `<text x="${x}" y="${y}" font-size="${size}" fill="${fill}" text-anchor="middle" dominant-baseline="central" ${extra}>${s}</text>`;
+
+/* ---------- Традиционные рисунки (параметризованы палитрой) ---------- */
+const DOT_POS = {
+  1:[[30,40]], 2:[[30,20],[30,60]], 3:[[15,16],[30,40],[45,64]],
+  4:[[17,20],[43,20],[17,60],[43,60]], 5:[[16,16],[44,16],[16,64],[44,64],[30,40]],
+  6:[[17,14],[43,14],[17,40],[43,40],[17,66],[43,66]],
+  7:[[12,10],[30,18],[48,26],[18,47],[42,47],[18,68],[42,68]],
+  8:[[18,11],[42,11],[18,30],[42,30],[18,50],[42,50],[18,69],[42,69]],
+  9:[[13,15],[30,15],[47,15],[13,40],[30,40],[47,40],[13,65],[30,65],[47,65]],
+};
+const DOT_COL = {1:'r',2:'gb',3:'brg',4:'bggb',5:'bggbr',6:'ggrrrr',7:'gggrrrr',8:'bbbbbbbb',9:'bbbrrrggg'};
+const DOT_R = {1:19,2:11,3:9,4:10,5:9,6:8.5,7:7.5,8:8,9:7.5};
+
+function dotsSVG(n, p) {
+  const col = {r:p.red, g:p.green, b:p.blue};
+  return DOT_POS[n].map(([x, y], i) => {
+    const c = col[DOT_COL[n][i]], r = DOT_R[n];
+    let s = `<circle cx="${x}" cy="${y}" r="${r}" fill="${c}"/><circle cx="${x}" cy="${y}" r="${r*.66}" fill="${p.paper}"/><circle cx="${x}" cy="${y}" r="${r*.42}" fill="${c}"/>`;
+    if (n === 1) s += `<circle cx="${x}" cy="${y}" r="${r*.18}" fill="${p.paper}"/><circle cx="${x}" cy="${y}" r="${r*.82}" fill="none" stroke="${p.green}" stroke-width="1.6" stroke-dasharray="3 2.2"/>`;
+    return s;
+  }).join('');
+}
+
+const BAM = { // [x, y, высота, цвет]
+  2:[[30,22,26,'g'],[30,58,26,'b']],
+  3:[[30,22,26,'g'],[18,58,26,'b'],[42,58,26,'b']],
+  4:[[18,22,26,'g'],[42,22,26,'b'],[18,58,26,'b'],[42,58,26,'g']],
+  5:[[14,22,26,'g'],[46,22,26,'b'],[30,40,26,'r'],[14,58,26,'b'],[46,58,26,'g']],
+  6:[[14,22,26,'g'],[30,22,26,'g'],[46,22,26,'g'],[14,58,26,'b'],[30,58,26,'b'],[46,58,26,'b']],
+  7:[[30,13,20,'r'],[14,40,20,'g'],[30,40,20,'g'],[46,40,20,'g'],[14,65,20,'b'],[30,65,20,'b'],[46,65,20,'b']],
+  8:[[11,22,26,'g'],[23,22,26,'b'],[37,22,26,'b'],[49,22,26,'g'],[11,58,26,'b'],[23,58,26,'g'],[37,58,26,'g'],[49,58,26,'b']],
+  9:[[14,15,21,'g'],[30,15,21,'r'],[46,15,21,'b'],[14,40,21,'g'],[30,40,21,'r'],[46,40,21,'b'],[14,65,21,'g'],[30,65,21,'r'],[46,65,21,'b']],
+};
+function stick(x, y, h, c, dark) {
+  return `<rect x="${x-3.4}" y="${y-h/2}" width="6.8" height="${h}" rx="3.2" fill="${c}"/>`+
+    `<rect x="${x-4}" y="${y-1.1}" width="8" height="2.2" rx="1.1" fill="${dark}"/>`+
+    `<rect x="${x-1}" y="${y-h/2+2.5}" width="2" height="${h/2-5}" rx="1" fill="#fff" opacity=".35"/>`;
+}
+function bambooSVG(n, p) {
+  if (n === 1) { // «птица» на единице бамбука
+    return `<path d="M30 70 C30 52 30 40 30 28" stroke="${p.green}" stroke-width="5" stroke-linecap="round" fill="none"/>`+
+      `<ellipse cx="20" cy="46" rx="11" ry="4" transform="rotate(-35 20 46)" fill="${p.green}"/>`+
+      `<ellipse cx="40" cy="56" rx="11" ry="4" transform="rotate(35 40 56)" fill="${p.blue}"/>`+
+      `<circle cx="30" cy="22" r="9" fill="${p.red}"/><circle cx="33" cy="20" r="2" fill="${p.paper}"/>`+
+      `<path d="M38 22 L46 24 L38 26 Z" fill="${p.gold}"/>`;
+  }
+  const col = {r:p.red, g:p.green, b:p.blue};
+  return BAM[n].map(([x, y, h, c]) => stick(x, y, h, col[c], p.ink)).join('');
+}
+
+const CN_NUM = ['一','二','三','四','五','六','七','八','九'];
+const WIND_CN = {e:'東', s:'南', w:'西', n:'北'}, WIND_EN = {e:'E', s:'S', w:'W', n:'N'};
+const FLOWER_CN = ['梅','蘭','菊','竹'], SEASON_CN = ['春','夏','秋','冬'];
+
+function traditional(p) {
+  return t => {
+    switch (t.suit) {
+      case 'dots':   return SVG(dotsSVG(t.rank, p));
+      case 'bamboo': return SVG(bambooSVG(t.rank, p));
+      case 'chars':  return SVG(txt(30, 22, CN_NUM[t.rank-1], 26, p.ink, `${CJK} font-weight="700"`) + txt(30, 58, '萬', 32, p.red, `${CJK} font-weight="700"`));
+      case 'wind':   return SVG(txt(30, 44, WIND_CN[t.rank], 42, p.ink, `${CJK} font-weight="700"`) + txt(51, 9, WIND_EN[t.rank], 10, p.blue, `${SANS} font-weight="700"`));
+      case 'dragon':
+        if (t.rank === 'w') return SVG(`<rect x="10" y="12" width="40" height="56" rx="3" fill="none" stroke="${p.blue}" stroke-width="3.5"/><rect x="16" y="18" width="28" height="44" rx="2" fill="none" stroke="${p.blue}" stroke-width="1.6"/>`);
+        return SVG(txt(30, 42, t.rank === 'r' ? '中' : '發', 44, t.rank === 'r' ? p.red : p.green, `${CJK} font-weight="700"`));
+      case 'flower': return SVG(txt(30, 44, FLOWER_CN[t.rank-1], 38, p.flowers[t.rank-1], `${CJK} font-weight="700"`) + txt(51, 9, t.rank, 10, p.ink, `${SANS} font-weight="700"`) + `<circle cx="9" cy="9" r="3" fill="${p.flowers[t.rank-1]}"/>`);
+      case 'season': return SVG(txt(30, 44, SEASON_CN[t.rank-1], 38, p.seasons[t.rank-1], `${CJK} font-weight="700"`) + txt(51, 9, t.rank, 10, p.ink, `${SANS} font-weight="700"`) + `<rect x="6" y="6" width="6" height="6" fill="${p.seasons[t.rank-1]}"/>`);
+    }
+  };
+}
+
+/* ---------- Минимализм: цифры и геометрия ---------- */
+function minimal(t) {
+  const C = {dots:'#2783DE', bamboo:'#2f9e63', chars:'#E56458'};
+  const icon = {
+    dots:   c => `<circle cx="30" cy="58" r="11" fill="${c}"/>`,
+    bamboo: c => `<rect x="17" y="47" width="6" height="22" rx="3" fill="${c}"/><rect x="27" y="47" width="6" height="22" rx="3" fill="${c}"/><rect x="37" y="47" width="6" height="22" rx="3" fill="${c}"/>`,
+    chars:  c => `<path d="M30 45 L43 58 L30 71 L17 58 Z" fill="${c}"/>`,
+  };
+  if (C[t.suit]) return SVG(txt(30, 26, t.rank, 34, C[t.suit], `${SANS} font-weight="800"`) + icon[t.suit](C[t.suit]));
+  if (t.suit === 'wind') {
+    const L = {e:'В', s:'Ю', w:'З', n:'С'}[t.rank], rot = {n:0, e:90, s:180, w:270}[t.rank];
+    return SVG(txt(30, 30, L, 34, '#2C2C2B', `${SANS} font-weight="800"`) + `<path d="M30 48 L38 66 L30 61 L22 66 Z" fill="#7D7A75" transform="rotate(${rot} 30 58)"/>`);
+  }
+  if (t.suit === 'dragon') {
+    if (t.rank === 'r') return SVG(`<circle cx="30" cy="40" r="17" fill="#E56458"/>`);
+    if (t.rank === 'g') return SVG(`<path d="M30 21 L49 56 L11 56 Z" fill="#2f9e63"/>`);
+    return SVG(`<rect x="13" y="23" width="34" height="34" rx="4" fill="none" stroke="#2783DE" stroke-width="4"/>`);
+  }
+  if (t.suit === 'flower') return SVG(txt(30, 34, '✿', 34, '#d1588f') + txt(30, 64, t.rank, 18, '#d1588f', `${SANS} font-weight="800"`));
+  const S = ['ВЕСНА','ЛЕТО','ОСЕНЬ','ЗИМА'][t.rank-1];
+  return SVG(txt(30, 32, t.rank, 30, '#D5803B', `${SANS} font-weight="800"`) + txt(30, 60, S, 9.5, '#D5803B', `${SANS} font-weight="700" letter-spacing=".5"`));
+}
+
+/* ---------- Эмодзи ---------- */
+function emoji(t) {
+  const suit = {dots:['🍒','#d6336c'], bamboo:['🍀','#2f9e44'], chars:['⭐','#e8590c']};
+  if (suit[t.suit]) { const [e, c] = suit[t.suit]; return SVG(txt(30, 24, t.rank, 30, c, `${SANS} font-weight="800"`) + txt(30, 59, e, 26, c, EMOJI)); }
+  const big = (e, label) => SVG(txt(30, 36, e, 34, '#000', EMOJI) + txt(30, 68, label, 9, '#7D7A75', `${SANS} font-weight="700" letter-spacing=".4"`));
+  if (t.suit === 'wind')   return big({e:'🌅', s:'🌴', w:'🌇', n:'🐧'}[t.rank], {e:'ВОСТОК', s:'ЮГ', w:'ЗАПАД', n:'СЕВЕР'}[t.rank]);
+  if (t.suit === 'dragon') return big({r:'🐉', g:'🐲', w:'☁️'}[t.rank], {r:'КРАСНЫЙ', g:'ЗЕЛЁНЫЙ', w:'БЕЛЫЙ'}[t.rank]);
+  if (t.suit === 'flower') return big(['🌸','🌻','🌷','🌹'][t.rank-1], 'ЦВЕТОК ' + t.rank);
+  return big(['🌱','☀️','🍂','❄️'][t.rank-1], ['ВЕСНА','ЛЕТО','ОСЕНЬ','ЗИМА'][t.rank-1]);
+}
+
+/* ---------- Скин из картинок ---------- */
+function imageSkin(name, folder, ext = 'png', colors = {}) {
+  return { name, colors, render: t => `<img src="${folder}${t.id}.${ext}" alt="${t.id}">` };
+}
+
+/* ---------- Реестр скинов ---------- */
+const SKINS = {
+  classic: {
+    name: 'Классика',
+    colors: {face:'#fbf8ef', face2:'#eee5cf', edge:'rgba(120,100,60,.35)', side:'#e6d6ad', side2:'#b8995c', board:'#1f5a4a', board2:'#0f3329', select:'#ffcf4a', hint:'#38b6ff'},
+    render: traditional({paper:'#fbf8ef', ink:'#1d2a44', red:'#c8242b', green:'#1f7a45', blue:'#1f4e8c', gold:'#c99a2e',
+      flowers:['#c2185b','#7b3fa0','#c99a2e','#1f7a45'], seasons:['#1f7a45','#c8242b','#d5803b','#1f4e8c']}),
+  },
+  jade: {
+    name: 'Нефрит',
+    colors: {face:'#eaf5ec', face2:'#cfe7d7', edge:'rgba(30,90,60,.35)', side:'#4fae84', side2:'#1d6a49', board:'#4a3426', board2:'#22160f', select:'#ffd166', hint:'#7ad7ff'},
+    render: traditional({paper:'#e3f1e6', ink:'#163628', red:'#b3262e', green:'#17734a', blue:'#1d5a7a', gold:'#b8862b',
+      flowers:['#b3265f','#6b3f8f','#b8862b','#17734a'], seasons:['#17734a','#b3262e','#c46a1f','#1d5a7a']}),
+  },
+  neon: {
+    name: 'Неон',
+    colors: {face:'#1d2033', face2:'#12142a', edge:'rgba(120,160,255,.45)', side:'#454a82', side2:'#1e2148', board:'#0a0b16', board2:'#04040a', select:'#ffd24d', hint:'#3cf0ff'},
+    render: traditional({paper:'#191c30', ink:'#f2f4ff', red:'#ff4d8d', green:'#3dffb0', blue:'#4dc3ff', gold:'#ffd24d',
+      flowers:['#ff6bb5','#c58bff','#ffd24d','#3dffb0'], seasons:['#3dffb0','#ff4d8d','#ff9f43','#4dc3ff']}),
+  },
+  minimal: {
+    name: 'Минимализм',
+    colors: {face:'#ffffff', face2:'#f4f4f2', edge:'#e2e1de', side:'#dcdad4', side2:'#aeaaa1', board:'#eef1f5', board2:'#cfd6df', select:'#ffcf4a', hint:'#2783DE'},
+    render: minimal,
+  },
+  emoji: {
+    name: 'Эмодзи',
+    colors: {face:'#fffdf7', face2:'#fff1d9', edge:'rgba(200,120,40,.3)', side:'#ffb36b', side2:'#d9733a', board:'#5b8def', board2:'#2c58b8', select:'#ffe14d', hint:'#ff5ca8'},
+    render: emoji,
+  },
+  // Пример скина из файлов рядом с index.html:
+  // mytiles: imageSkin('Мои плитки', 'skins/mytiles/', 'png'),
+};
+
+function registerSkin(id, skin) { SKINS[id] = skin; fillSkinSelect(); }
+window.registerSkin = registerSkin; window.SKINS = SKINS; window.imageSkin = imageSkin;
+
+/* =====================================================================
+   ПЛИТКИ И РАСКЛАДКА
+   ===================================================================== */
+const TYPES = [];
+for (const suit of ['dots','bamboo','chars']) for (let r = 1; r <= 9; r++) TYPES.push({suit, rank:r});
+for (const r of ['e','s','w','n']) TYPES.push({suit:'wind', rank:r});
+for (const r of ['r','g','w']) TYPES.push({suit:'dragon', rank:r});
+for (const suit of ['flower','season']) for (let r = 1; r <= 4; r++) TYPES.push({suit, rank:r});
+TYPES.forEach(t => { t.id = `${t.suit}-${t.rank}`; t.group = (t.suit === 'flower' || t.suit === 'season') ? t.suit : t.id; });
+const ALL_IDS = TYPES.map(t => t.id);
+
+// Классическая «Черепаха»: 144 позиции, x/y в размерах плитки, z — слой
+const TURTLE = (() => {
+  const p = [], add = (x, y, z) => p.push({x, y, z});
+  [[1,12],[3,10],[2,11],[1,12],[1,12],[2,11],[3,10],[1,12]].forEach(([a, b], y) => { for (let x = a; x <= b; x++) add(x, y, 0); });
+  add(0, 3.5, 0); add(13, 3.5, 0); add(14, 3.5, 0);
+  for (let y = 1; y <= 6; y++) for (let x = 4; x <= 9; x++) add(x, y, 1);
+  for (let y = 2; y <= 5; y++) for (let x = 5; x <= 8; x++) add(x, y, 2);
+  for (let y = 3; y <= 4; y++) for (let x = 6; x <= 7; x++) add(x, y, 3);
+  add(6.5, 3.5, 4);
+  return p;
+})();
+const COLS = 15, ROWS = 8;
+
+const rnd = n => Math.floor(Math.random() * n);
+const shuffle = a => { for (let i = a.length - 1; i > 0; i--) { const j = rnd(i + 1); [a[i], a[j]] = [a[j], a[i]]; } return a; };
+
+function isFree(t, alive) {
+  let left = false, right = false;
+  for (const o of alive) {
+    if (o === t) continue;
+    if (o.z > t.z && Math.abs(o.x - t.x) < 1 && Math.abs(o.y - t.y) < 1) return false;
+    if (o.z === t.z && Math.abs(o.y - t.y) < 1) {
+      if (Math.abs(o.x - (t.x - 1)) < .01) left = true;
+      if (Math.abs(o.x - (t.x + 1)) < .01) right = true;
+    }
+  }
+  return !(left && right);
+}
+
+// Раздаёт пары так, чтобы расклад гарантированно решался (обратная сборка)
+function dealSolvable(positions, pairs) {
+  for (let attempt = 0; attempt < 300; attempt++) {
+    const alive = new Set(positions), out = new Map();
+    let ok = true;
+    for (const [a, b] of shuffle(pairs.slice())) {
+      const free = [...alive].filter(t => isFree(t, alive));
+      if (free.length < 2) { ok = false; break; }
+      const i = rnd(free.length); let j = rnd(free.length - 1); if (j >= i) j++;
+      out.set(free[i], a); out.set(free[j], b);
+      alive.delete(free[i]); alive.delete(free[j]);
+    }
+    if (ok) return out;
+  }
+  console.warn('fallback deal');
+  // запасной вариант — просто случайно
+  const flat = shuffle(pairs.flat()), out = new Map();
+  positions.forEach((p, i) => out.set(p, flat[i]));
+  return out;
+}
+
+function pairsFrom(types) {
+  const byGroup = {};
+  for (const t of types) (byGroup[t.group] ||= []).push(t);
+  const pairs = [];
+  for (const g in byGroup) { const l = shuffle(byGroup[g]); for (let i = 0; i + 1 < l.length; i += 2) pairs.push([l[i], l[i+1]]); }
+  return pairs;
+}
+
+/* =====================================================================
+   ИГРА
+   ===================================================================== */
+const $ = id => document.getElementById(id);
+const boardEl = $('board'), mainEl = $('main');
+let tiles = [], selected = null, history = [], moves = 0, startTime = 0, timerId = 0, hintPair = null, finished = false;
+let skinId = 'classic';
+try { skinId = localStorage.getItem('mahjong-skin') || 'classic'; } catch (e) {}
+if (!SKINS[skinId]) skinId = 'classic';
+
+function newGame() {
+  const fullSet = [];
+  for (const t of TYPES) { const n = (t.suit === 'flower' || t.suit === 'season') ? 1 : 4; for (let i = 0; i < n; i++) fullSet.push(t); }
+  tiles = TURTLE.map((p, i) => ({...p, i, alive:true, type:null, el:null}));
+  const deal = dealSolvable(tiles, pairsFrom(fullSet));
+  tiles.forEach(t => t.type = deal.get(t));
+  selected = null; history = []; moves = 0; hintPair = null; finished = false;
+  clearInterval(timerId); timerId = 0; startTime = 0; $('time').textContent = '0:00';
+  hideOverlay(); build(); update();
+}
+
+function build() {
+  boardEl.innerHTML = '';
+  for (const t of tiles) {
+    const el = document.createElement('div');
+    el.className = 'tile';
+    el.innerHTML = '<div class="face"></div>';
+    el.addEventListener('click', () => clickTile(t));
+    t.el = el; boardEl.appendChild(el);
+  }
+  layout(); paintFaces();
+}
+
+function paintFaces() {
+  const skin = SKINS[skinId];
+  for (const t of tiles) {
+    t.el.firstChild.innerHTML = skin.render(t.type);
+    t.el.title = t.type.id;
+  }
+}
+
+function applySkinColors() {
+  const base = SKINS.classic.colors, c = {...base, ...(SKINS[skinId].colors || {})};
+  for (const k in c) document.documentElement.style.setProperty('--' + k, c[k]);
+}
+
+function setSkin(id) {
+  if (!SKINS[id]) return;
+  skinId = id; $('skin').value = id;
+  try { localStorage.setItem('mahjong-skin', id); } catch (e) {}
+  applySkinColors(); if (tiles.length) paintFaces();
+}
+
+function layout() {
+  const W0 = mainEl.clientWidth - 24, H0 = mainEl.clientHeight - 24, AR = 1.32;
+  const w = Math.max(18, Math.min(W0 / (COLS + .25), H0 / (ROWS * AR + .25)));
+  const h = w * AR, d = w * .12, gap = Math.max(1, w * .03);
+  const bw = COLS * w + d, bh = ROWS * h + d;
+  boardEl.style.left = (mainEl.clientWidth - bw) / 2 + 'px';
+  boardEl.style.top = (mainEl.clientHeight - bh) / 2 + 'px';
+  boardEl.style.setProperty('--w', w + 'px');
+  boardEl.style.setProperty('--fw', (w - gap) + 'px');
+  boardEl.style.setProperty('--fh', (h - gap) + 'px');
+  for (const t of tiles) {
+    const s = t.el.style;
+    s.left = (t.x * w - t.z * d) + 'px';
+    s.top = (t.y * h - t.z * d) + 'px';
+    s.width = (w - gap + d) + 'px';
+    s.height = (h - gap + d) + 'px';
+    s.zIndex = t.z * 1000 + Math.round((t.x + t.y) * 10);
+  }
+}
+
+const alive = () => tiles.filter(t => t.alive);
+const match = (a, b) => a !== b && a.type.group === b.type.group;
+
+function freePairs() {
+  const al = alive(), free = al.filter(t => isFree(t, al)), res = [];
+  for (let i = 0; i < free.length; i++) for (let j = i + 1; j < free.length; j++) if (match(free[i], free[j])) res.push([free[i], free[j]]);
+  return res;
+}
+
+function clickTile(t) {
+  if (!t.alive || finished) return;
+  const al = alive();
+  if (!isFree(t, al)) { t.el.classList.remove('shake'); void t.el.offsetWidth; t.el.classList.add('shake'); return; }
+  if (!timerId) startTimer();
+  if (selected === t) { selected = null; }
+  else if (selected && match(selected, t)) {
+    selected.alive = t.alive = false;
+    history.push({kind:'pair', a:selected, b:t});
+    moves++; selected = null;
+  } else selected = t;
+  hintPair = null; update();
+}
+
+function undo() {
+  const h = history.pop(); if (!h) return;
+  if (h.kind === 'pair') { h.a.alive = h.b.alive = true; moves = Math.max(0, moves - 1); }
+  else { h.prev.forEach((type, t) => t.type = type); paintFaces(); }
+  selected = null; hintPair = null; finished = false; hideOverlay(); update();
+}
+
+function reshuffle() {
+  const al = alive(); if (al.length < 2) return;
+  const prev = new Map(al.map(t => [t, t.type]));
+  const deal = dealSolvable(al, pairsFrom(al.map(t => t.type)));
+  al.forEach(t => t.type = deal.get(t));
+  history.push({kind:'shuffle', prev});
+  selected = null; hintPair = null; finished = false; hideOverlay(); paintFaces(); update();
+}
+
+function hint() {
+  const p = freePairs(); if (!p.length) return;
+  hintPair = p[rnd(p.length)]; update();
+}
+
+function startTimer() {
+  startTime = Date.now();
+  timerId = setInterval(() => {
+    const s = Math.floor((Date.now() - startTime) / 1000);
+    $('time').textContent = `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`;
+  }, 1000);
+}
+
+function update() {
+  const al = alive();
+  for (const t of tiles) {
+    const c = t.el.classList, free = t.alive && isFree(t, al);
+    t.el.style.display = t.alive ? '' : 'none';
+    c.toggle('free', free); c.toggle('blocked', t.alive && !free);
+    c.toggle('sel', t === selected);
+    c.toggle('hint', !!hintPair && hintPair.includes(t));
+  }
+  $('left').textContent = al.length; $('moves').textContent = moves;
+  $('btnUndo').disabled = !history.length;
+  if (!al.length) { finished = true; clearInterval(timerId); showOverlay('🎉 Победа!', `Все плитки убраны за ${$('time').textContent} и ${moves} ходов.`, [['Сыграть ещё', newGame, true]]); }
+  else if (!freePairs().length) showOverlay('Ходов нет', 'Свободных пар не осталось. Можно перемешать оставшиеся плитки или отменить ход.', [['🔀 Перемешать', reshuffle, true], ['↩️ Отменить', undo], ['Новая игра', newGame]]);
+}
+
+function showOverlay(title, text, buttons, html = '') {
+  const card = $('card');
+  card.innerHTML = `<h2>${title}</h2><p>${text}</p>${html}<div class="row"></div>`;
+  for (const [label, fn, primary] of buttons) {
+    const b = document.createElement('button'); b.textContent = label; if (primary) b.className = 'primary';
+    b.onclick = () => { hideOverlay(); fn(); }; card.querySelector('.row').appendChild(b);
+  }
+  $('overlay').classList.add('show');
+  card.querySelector('button')?.focus();
+}
+function hideOverlay() { $('overlay').classList.remove('show'); }
+
+/* ---------- Свой скин из картинок с компьютера ---------- */
+function customSkinDialog() {
+  showOverlay('Свой скин из картинок',
+    'Выберите картинки, названные по коду плитки (например <code>dots-5.png</code>). Чего не хватит, нарисуется классикой.',
+    [['Выбрать файлы…', () => $('files').click(), true], ['Отмена', () => {}]],
+    `<div class="names">${ALL_IDS.join(' · ')}</div>`);
+}
+$('files').addEventListener('change', e => {
+  const map = {};
+  for (const f of e.target.files) map[f.name.replace(/\.[^.]+$/, '').toLowerCase()] = URL.createObjectURL(f);
+  const n = ALL_IDS.filter(id => map[id]).length;
+  if (!n) { showOverlay('Картинки не подошли', 'Ни одно имя файла не совпало с кодами плиток.', [['Попробовать снова', customSkinDialog, true], ['Закрыть', () => {}]]); return; }
+  const fallback = SKINS.classic.render;
+  registerSkin('custom', {
+    name: `Свой скин (${n}/${ALL_IDS.length})`,
+    colors: SKINS.classic.colors,
+    render: t => map[t.id] ? `<img src="${map[t.id]}" alt="${t.id}">` : fallback(t),
+  });
+  setSkin('custom'); e.target.value = '';
+});
+
+/* ---------- Интерфейс ---------- */
+function fillSkinSelect() {
+  const sel = $('skin');
+  sel.innerHTML = Object.entries(SKINS).map(([id, s]) => `<option value="${id}">${s.name}</option>`).join('');
+  sel.value = skinId;
+}
+$('skin').addEventListener('change', e => setSkin(e.target.value));
+$('btnNew').onclick = newGame;
+$('btnUndo').onclick = undo;
+$('btnHint').onclick = hint;
+$('btnShuffle').onclick = reshuffle;
+$('btnImg').onclick = customSkinDialog;
+$('dim').addEventListener('change', e => boardEl.classList.toggle('dim', e.target.checked));
+document.addEventListener('keydown', e => {
+  if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'z') { e.preventDefault(); undo(); }
+  else if (e.key.toLowerCase() === 'h' || e.key === 'р') hint();
+  else if (e.key === 'Escape') { selected = null; hideOverlay(); update(); }
+});
+window.addEventListener('resize', () => tiles.length && layout());
+
+fillSkinSelect(); applySkinColors(); boardEl.classList.add('dim');
+newGame();
+</script>
+</body>
+</html>
